@@ -1,0 +1,467 @@
+---
+title: "Mobile loan Eligibility prediction in R using supervised Learning"
+author: "oky"
+date: '2022-10-03'
+output: html_document
+---
+
+## Problem statemen
+## P2P platforms including phone lending institutions apply credit rating  models to evaluate potential loan default risks. The ratings generated in terms of scores determine the likelyhood of borrowers defaulting their loans. To make lending decisions less time consuming and predict whether a borrower is likely to default more precisely, Machine learning approaches can facilitate the accuracy of loan default prediction hence borrower Eligibility.
+
+## Defining the Metric for Success
+# creating a model that can precisely classify predicts mobile loan eligibility in terms of borrower default with an accuracy level of 70% and above
+
+## Recording the Experimental Design
+# For thes project we shall use logistic regression and the compare its accuracy with decision  tree model as well as svm
+
+## Data Relevance
+# The dataset is obtained from https://www.bondora.com/marketing/media/LoanData.zip, from a p2p financial institution based in Estonia, from the years 2009 t0 2022. For our project, data from year 2021 will be extracted.
+
+```{r}
+# Loading the dataset and previewing
+LoanDataset <-  read.csv('LoanDataset.csv')
+head(LoanDataset)
+
+```
+
+
+```{r}
+# checking the shape of dataset
+dim(LoanDataset)
+
+```
+
+```{r}
+# since the dataset is large;from the year 2009 to 2021 which is 256,427  rows and 112 columns. 
+# checking the column attributes
+str(LoanDataset)
+summary(LoanDataset)
+```
+
+
+
+```{r}
+# For our model to perform well, the dataset for the year 2021 is extracted for the purpose of this project
+#create new variable that contains loanyear only column
+LoanDataset$LoanYear <- format(as.Date(LoanDataset$LoanDate ,format="%m/%d/%Y"),"%Y")
+#view new data frame
+head(LoanDataset)
+```
+
+
+```{r}
+# extracting dataset for the year 2021 and naming the new dataset as 'LoanData'
+LoanData <- LoanDataset[LoanDataset$LoanYear == "2021", ]
+dim(LoanData)
+```
+
+## Data Cleaning of the LoanData Dataset
+
+```{r}
+# LoanData contains 51,226 rows and 133 columns
+# checking on missing values
+colSums(is.na(LoanData))
+
+```
+```{r}
+# dropping columns will majority of missing values and some with only blanks e.g.  NrOfDependants, 
+# some columns have been filled with same value hence need to be dropped;DebtToIncome, WorkExperience, UseOfLoan, MaritalStatus, EmploymentStatus & OccupationArea
+
+LoanData1 = subset(LoanData, select = -c(DateOfBirth,County,City,EmploymentPosition,PlannedPrincipalTillDate,CurrentDebtDaysPrimary,CurrentDebtDaysSecondary,PlannedPrincipalPostDefault,PlannedInterestPostDefault,EAD1,EAD2,PrincipalRecovery,InterestRecovery,RecoveryStage,EL_V0,EL_V1,CreditScoreEeMini,PrincipalWriteOffs,InterestAndPenaltyWriteOffs,InterestAndPenaltyBalance,PreviousRepaymentsBeforeLoan,PreviousEarlyRepaymentsBefoleLoan,NextPaymentNr,NrOfScheduledPayments,PrincipalDebtServicingCost,InterestAndPenaltyDebtServicingCost,DebtToIncome,NrOfDependants,WorkExperience,UseOfLoan,MaritalStatus,EmploymentStatus,OccupationArea) )
+dim(LoanData1)
+head(LoanData1)
+```
+
+```{r}
+# LoanData1 dataset has 51,226 rows & 87 columns
+# Based on data exploration, duplicate features e.g., ‘LoanId’ when there’s ‘LoanNumber’, Features relating to dates excluding ‘DefaultDate’ are deleted.The multiple values of income are also deleted since they are already aggregated in ‘IncomeTotal’. 
+# Therefore keeping the following Columns 'LoanNumber', 'NewCreditCustomer','Age','Gender', 'Amount','Interest','LoanDuration','MonthlyPayment', 'Education','EmploymentDurationCurrentEmployer', 'HomeOwnershipType','IncomeTotal','DefaultDate','Restructured', 'Status','NoOfPreviousLoansBeforeLoan', 'AmountOfPreviousLoansBeforeLoan', 'PreviousRepaymentsBeforeLoan',
+LoanData2 = subset(LoanData1, select = -c(ReportAsOfEOD,LoanId,ListedOnUTC,BiddingStartedOn,BidsPortfolioManager,BidsApi,BidsManual,PartyId,LoanApplicationStartedDate,LoanDate,ContractEndDate,FirstPaymentDate,MaturityDate_Original,MaturityDate_Last,ApplicationSignedHour,ApplicationSignedWeekday,VerificationType,LanguageCode, Country,AppliedAmount,IncomeFromPrincipalEmployer,IncomeFromPension,IncomeFromFamilyAllowance,IncomeFromSocialWelfare,IncomeFromLeavePay,IncomeFromChildSupport,IncomeOther,ExistingLiabilities,LiabilitiesTotal,RefinanceLiabilities,FreeCash,MonthlyPaymentDay,ActiveScheduleFirstPaymentReached,PlannedInterestTillDate,LastPaymentOn,DebtOccuredOn,DebtOccuredOnForSecondary,ExpectedLoss,LossGivenDefault,ExpectedReturn,ProbabilityOfDefault, PrincipalOverdueBySchedule,StageActiveSince,ModelVersion,Rating,Rating_V0,Rating_V1,Rating_V2, ActiveLateCategory,WorseLateCategory,CreditScoreEsMicroL,CreditScoreEsEquifaxRisk,CreditScoreFiAsiakasTietoRiskGrade,PrincipalPaymentsMade,InterestAndPenaltyPaymentsMade,PrincipalBalance,GracePeriodStart,GracePeriodEnd,NextPaymentDate,ReScheduledOn,ActiveLateLastPaymentCategory,LoanYear,LoanNumber) )
+dim(LoanData2)
+head(LoanData2)
+```
+
+```{r}
+# checking on missing values
+colSums(is.na(LoanData2))
+```
+
+```{r}
+# LoanData2 has no missing values
+summary(LoanData2)
+
+```
+
+```{r}
+# checking the datatypes of LoanData2
+str(LoanData2)
+# NewCreditCustomer & Restructured are boolean
+# 
+```
+
+```{r}
+# for this predictive model, we shall select and modify variables in a LoanData2 dataset. 
+# The attributes; ‘Status’ and ‘DefaultDate’  will be used to create the target attribute named; ‘Default’. 
+# The variable; ‘Status’ has three unique values namely; current, late and repaid and therefore not applicable
+# The 'Status' Late, cannot be treated as default because in some records the loan status is late but the ‘DefaultDate’ is null implying the loan was not defaulted but was only late.
+# The variable ‘DefaultDate’ states when the loan was defaulted.
+# Checking value counts for column "Status"
+table(LoanData2['Status'])
+
+```
+
+
+```{r}
+
+# When ‘Status’ variable and ‘DefaultDate’ variable are combined,it will create a new target feature; ‘Default’. 
+# filtering the loan status to current  
+
+LoanData2 <- LoanData2[LoanData2$Status!="Current", ]
+
+head(LoanData2)
+dim(LoanData2)
+```
+
+```{r}
+# confirming the default dates inorder to produce a new target attribute called ‘Default’
+# the new feature will have the values 0 if default and 1 if loan is not default. 
+# '1' is assigned when default date is null and '0' when default date is present
+
+
+LoanData2$Default <- ifelse(LoanData2$Status == "Repaid", '1','0')
+
+table(LoanData2["Default"])
+```
+
+```{r}
+# The attributes ‘DefaultDate’ & ‘Status’  are then removed once the target feature is created.
+
+LoanData3 = subset(LoanData2, select = -c(DefaultDate,Status))
+
+head(LoanData3)
+
+```
+
+## Handling outliers
+```{r}
+boxplot(LoanData3$Age,
+  ylab = "Age"
+)
+
+```
+```{r}
+library(ggplot2)
+
+ggplot(LoanData3) +
+  aes(x =  Amount) +
+  geom_histogram(bins = 30L, fill = "#0c4c8a") +
+  theme_minimal()
+# Amount borrowed is Right skwewed
+```
+
+
+
+
+
+
+## Exploratory Data Analysis
+## Univariate Analysis
+
+```{r}
+# Visualizing Loans that are default
+# default = '0', repaid = '1'
+library(ggplot2)
+#create bar chart
+ggplot(LoanData3, aes(x=Default)) +
+  geom_bar(fill = "steelblue")
+table(LoanData3["Default"])
+transform(as.data.frame(table(LoanData3$Default)), percentage_column = Freq / nrow(LoanData3) * 100)
+
+# 42% of the loans are default
+```
+
+```{r}
+# Gender; 0=Male, 1=Woman, 2=Undefined
+# Visualizing Gender
+#create bar chart
+ggplot(LoanData3, aes(x=Gender)) +
+  geom_bar(fill = "steelblue")
+table(LoanData3["Gender"])
+transform(as.data.frame(table(LoanData3$Gender)), percentage_column = Freq / nrow(LoanData3) * 100)
+# 55% of the loan applicants are male.
+```
+
+```{r}
+# Education;1=Primary education, 2=Basic education, 3=Vocational education, 4= Secondary education,5=Higher education
+
+#create bar chart
+ggplot(LoanData3, aes(x=Education)) +
+  geom_bar(fill = "steelblue")
+table(LoanData3["Education"])
+transform(as.data.frame(table(LoanData3$Education)), percentage_column = Freq / nrow(LoanData3) * 100)
+
+# Nearly 32% have a Vocational education while approximately 27% have Secondary education
+
+```
+
+```{r}
+# EmploymentDurationCurrentEmployer;
+
+#create bar chart
+ggplot(LoanData3, aes(x=EmploymentDurationCurrentEmployer)) +
+  geom_bar(fill = "steelblue")
+table(LoanData3["EmploymentDurationCurrentEmployer"])
+transform(as.data.frame(table(LoanData3$EmploymentDurationCurrentEmployer)), percentage_column = Freq / nrow(LoanData3) * 100)
+
+# 31% have worked upto 5yrs with the current employer while 29% have worked more than 5yrs
+
+```
+
+
+```{r}
+# NewCreditCustomer;
+
+#create bar chart
+ggplot(LoanData3, aes(x=NewCreditCustomer)) +
+  geom_bar(fill = "steelblue")
+table(LoanData3["NewCreditCustomer"])
+transform(as.data.frame(table(LoanData3$NewCreditCustomer)), percentage_column = Freq / nrow(LoanData3) * 100)
+
+# 59% are new credit customers
+
+```
+
+
+```{r}
+# Restructured;
+
+#create bar chart
+ggplot(LoanData3, aes(x=Restructured)) +
+  geom_bar(fill = "steelblue")
+table(LoanData3["Restructured"])
+transform(as.data.frame(table(LoanData3$Restructured)), percentage_column = Freq / nrow(LoanData3) * 100)
+
+# 24% borrowers have had their loans restructured
+
+```
+
+## Bivariate Analysis
+```{r}
+# Gender vs Default
+# Gender; 0=Male, 1=Woman, 2=Undefined
+# default = '0', repaid = '1'
+# grouped bar plot preserving zero count bars
+ggplot(LoanData3, 
+       aes(x = Gender, 
+           fill = Default)) + 
+  geom_bar(position = position_dodge(preserve = "single"))
+# Male loan applicants default more than female
+```
+
+
+```{r}
+# Education vs Default
+# Education;1=Primary education, 2=Basic education, 3=Vocational education, 4= Secondary education,5=Higher education
+# default = '0', repaid = '1'
+# grouped bar plot preserving zero count bars
+ggplot(LoanData3, 
+       aes(x = Education, 
+           fill = Default)) + 
+  geom_bar(position = position_dodge(preserve = "single"))
+# 	Those with Vocational education default most than the other education status.
+```
+
+```{r}
+# NewCreditCustomer vs Default
+# NewCreditCustomer;
+# default = '0', repaid = '1'
+# grouped bar plot preserving zero count bars
+ggplot(LoanData3, 
+       aes(x = NewCreditCustomer, 
+           fill = Default)) + 
+  geom_bar(position = position_dodge(preserve = "single"))
+# 	New Credit Customers default more than existing credit customers.
+```
+
+
+##	Converting Categorical Variables
+```{r}
+# The variables; ‘NewCreditCustomer’, ‘Restructured’, ‘EmploymentDurationCurrentEmployer’ need to be converted to numeric values
+
+library(caret)
+
+dmy <- dummyVars(" ~ .", data = LoanData3, fullRank = T)
+dat_transformed <- data.frame(predict(dmy, newdata = LoanData3))
+
+str(dat_transformed)
+
+```
+```{r}
+
+# Install and load reshape2 package
+install.packages("reshape2")
+library(reshape2)
+ 
+# creating correlation matrix
+corr_mat <- round(cor(dat_transformed),2)
+ 
+# reduce the size of correlation matrix
+melted_corr_mat <- melt(corr_mat)
+# head(melted_corr_mat)
+ 
+# plotting the correlation heatmap
+library(ggplot2)
+ggplot(data = melted_corr_mat, aes(x=Var1, y=Var2,
+                                   fill=value)) +
+geom_tile()
+
+```
+
+## Splitting the data
+```{r}
+library(caTools)
+sample <- sample.split(dat_transformed$Default1, SplitRatio = 0.8)
+train_data <- subset(dat_transformed, sample == TRUE)
+test_data <- subset(dat_transformed, sample == FALSE)
+
+```
+
+## Performing Logistic regression on dataset
+```{r}
+# Installing the package
+install.packages("caTools")    # For Logistic regression
+install.packages("ROCR")       # For ROC curve to evaluate model
+    
+# Loading package
+library(caTools)
+library(ROCR) 
+
+# Training model
+logistic_model <- glm(Default1 ~ ., data = train_data, family = "binomial")
+
+# Summary
+summary(logistic_model)
+```
+
+```{r}
+# Predict test data based on model
+predict_reg <- predict(logistic_model, 
+                       test_data, type = "response")
+predict_reg 
+
+# Changing probabilities
+predict_reg <- ifelse(predict_reg >0.5, 1, 0)
+
+# Evaluating model accuracy
+# using confusion matrix
+table(test_data$Default1, predict_reg)
+
+missing_classerr <- mean(predict_reg != test_data$Default1)
+print(paste('Accuracy =', 1 - missing_classerr))
+# the overall accuracy is 71% 
+# That means that given data points of 4,658 observations from our test dataset, our model has correctly predict 1112 outcome. 
+# the confusion matrix suggest that our model has false negative of 491 data, which means that our model predict 491 borrowers will default but they actually paid the loan, and 855 false positive which our model predict not default but they actually default.
+```
+
+
+## Performing Decision Tree
+```{r}
+
+sample <- sample.split(dat_transformed$Default1, SplitRatio = 0.8)
+train_data <- subset(dat_transformed, sample == TRUE)
+test_data <- subset(dat_transformed, sample == FALSE)
+install.packages("rpart.plot")
+library(rpart)
+library(rpart.plot)
+fit <- rpart(Default1~., data = train_data, method = 'class')
+rpart.plot(fit, extra = 106)
+```
+
+
+```{r}
+# making predictions
+predict_Default <-predict(fit, test_data, type = 'class')
+# Testing the borrower who defaulted and those who did not.
+
+table_mat <- table(test_data$Default1, predict_Default)
+table_mat
+
+# The model correctly predicted 1114 defaulters but classified 853 non-defaulters as defaulters. 
+# he model also misclassified 566 borrowers as non-defaulters while they turned out to be defaulters.
+
+```
+
+```{r}
+# accuracy measure for classification with the confusion matrix
+accuracy_Test <- sum(diag(table_mat)) / sum(table_mat)
+print(paste('Accuracy for test', accuracy_Test))
+
+# the accuracy of the model is 71% which is the same as that of logistic regression
+```
+## Tuning the hyper-parameters in decision tree
+```{r}
+accuracy_tune <- function(fit) {
+    predict_Default <- predict(fit, test_data, type = 'class')
+    table_mat <- table(test_data$Default1, predict_Default)
+    accuracy_Test <- sum(diag(table_mat)) / sum(table_mat)
+    accuracy_Test
+}
+
+control <- rpart.control(minsplit = 9,
+    minbucket = round(5 / 3),
+    maxdepth = 3,
+    cp = 0)
+tune_fit <- rpart(Default1~., data = train_data, method = 'class', control = control)
+accuracy_tune(tune_fit)
+
+
+```
+
+## Support Vector Machine (SVM) model.
+```{r}
+sample <- sample.split(dat_transformed$Default1, SplitRatio = 0.8)
+train_data <- subset(dat_transformed, sample == TRUE)
+test_data <- subset(dat_transformed, sample == FALSE)
+
+#building the model.
+install.packages('e1071')
+library(e1071)
+# Basic SVM model
+svmfit =svm(Default1∼., data=train_data, kernel ="radial", gamma =2, cost = 5)
+svmfit
+```
+
+```{r}
+predict_Default_status_svm = predict(svmfit,test_data,type="probabilities")
+predict_Default_status_label = ifelse(predict_Default_status_svm<0.5,0,1)
+table(predict_Default_status_label, test_data$Default1)
+
+# accuracy of 65%
+```
+
+
+```{r}
+# fine tuning to try obtain the  best gamma and cost values
+tune.out=tune(svm , Default1∼., data=train_data, kernel ="radial",
+ranges =list(cost=c(0.1 ,1 ,10 ,100 ,1000),
+gamma=c(0.5,1,2,3,4)))
+summary(tune.out)
+```
+
+```{r}
+pred=predict(tune.out$best.model, test_data$Default1 ,newdata=test_data)
+predict_label = ifelse(pred<0.5,0,1)
+table(predict_label, test_data$Default1)
+```
+
+```{r}
+perform_Accuracy <- data.frame(matrix(ncol=3, nrow=1))
+colnames(perform_Accuracy) <- c("ACCURACY")
+perform_Accuracy$ACCURACY <- round(mean(predict_label == test_data$Default1)*100,3)
+perform_Accuracy
+```
+
+
+
+
+
